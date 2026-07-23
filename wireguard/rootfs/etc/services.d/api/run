@@ -1,9 +1,19 @@
 #!/command/with-contenv bashio
 # ==============================================================================
 # Home Assistant Community Add-on: WireGuard
-# The most simple HTTP API you've ever seen.
-# Provides status of WireGuard peers.
+# Serves either the lightweight web interface (QR codes + config downloads +
+# JSON status API via CGI) or the simple nc-based JSON status API, depending
+# on the `web_interface` configuration option.
 # ==============================================================================
+
+if bashio::config.true 'web_interface'; then
+    bashio::log.info "Starting WireGuard web interface on port 80..."
+    exec busybox httpd -f -p 80 -h /var/lib/wireguard/www
+fi
+
+# ---------------------------------------------------------------------------
+# Fallback: original nc-based JSON status API (web_interface is disabled)
+# ---------------------------------------------------------------------------
 declare -a peers
 declare endpoint
 declare json

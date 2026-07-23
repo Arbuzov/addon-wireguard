@@ -295,3 +295,104 @@ for peer in $(bashio::config 'peers|keys'); do
     filename=$(sha1sum <<< "${peer_public_key}" | awk '{ print $1 }')
     echo -n "${name}" > "/var/lib/wireguard/${filename}"
 done
+
+# Generate web interface files if enabled
+if bashio::config.true 'web_interface'; then
+    bashio::log.info "Building web interface files..."
+
+    www_dir="/var/lib/wireguard/www"
+    rm -rf "${www_dir}"
+    mkdir -p "${www_dir}/cgi-bin" "${www_dir}/configs"
+
+    # HTML header
+    cat > "${www_dir}/index.html" << 'HTMLEOF'
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WireGuard — Peers</title>
+<style>
+body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;padding:2rem}
+h1{color:#38bdf8;margin:0 0 1.5rem}
+.peers{display:flex;flex-wrap:wrap;gap:1.5rem}
+.peer{background:#1e293b;border-radius:.75rem;padding:1.5rem;text-align:center;min-width:220px}
+.peer h2{margin:0 0 1rem;color:#38bdf8;font-size:1rem;word-break:break-all}
+.peer img{display:block;margin:0 auto 1rem;max-width:200px;border-radius:.5rem}
+.btn{display:inline-block;padding:.5rem 1.25rem;background:#0ea5e9;color:#fff;
+     border-radius:.375rem;text-decoration:none;font-size:.875rem}
+.btn:hover{background:#38bdf8;color:#0f172a}
+</style>
+</head>
+<body>
+<h1>WireGuard Peers</h1>
+<div class="peers">
+HTMLEOF
+
+    # Add a card for every peer
+    for peer in $(bashio::config 'peers|keys'); do
+        name=$(bashio::config "peers[${peer}].name")
+        config_dir="/ssl/wireguard/${name}"
+
+        # Make the client config available for download
+        cp "${config_dir}/client.conf" "${www_dir}/configs/${name}.conf"
+
+        # Embed the QR code as a base64 data URI
+        qr_b64=$(base64 "${config_dir}/qrcode.png" | tr -d '\n')
+
+        {
+            echo "  <div class=\"peer\">"
+            echo "    <h2>${name}</h2>"
+            echo "    <img src=\"data:image/png;base64,${qr_b64}\" alt=\"QR code for ${name}\">"
+            echo "    <a class=\"btn\" href=\"/configs/${name}.conf\" download=\"${name}.conf\">&#x2B07; Download Config</a>"
+            echo "  </div>"
+        } >> "${www_dir}/index.html"
+    done
+
+    # HTML footer
+    cat >> "${www_dir}/index.html" << 'HTMLEOF'
+</div>
+</body>
+</html>
+HTMLEOF
+
+    # CGI script that mirrors the existing JSON status API
+    cat > "${www_dir}/cgi-bin/status" << 'CGIEOF'
+#!/bin/bash
+peers=()
+while IFS=$'\t' read -r -a line; do
+    if [[ "${#line[@]}" -gt 6 ]]; then
+        endpoint="${line[3]}"
+        latest_handshake="${line[5]}"
+        public_key="${line[1]}"
+        transfer_rx="${line[6]}"
+        transfer_tx="${line[7]}"
+
+        filename=$(sha1sum <<< "${public_key}" | awk '{ print $1 }')
+        if [[ -f "/var/lib/wireguard/${filename}" ]]; then
+            name=$(</var/lib/wireguard/${filename})
+            peers+=("${name}")
+            peers+=("{\"endpoint\":\"${endpoint}\",\"latest_handshake\":${latest_handshake},\"transfer_rx\":${transfer_rx},\"transfer_tx\":${transfer_tx}}")
+        fi
+    fi
+done <<< "$(wg show all dump)"
+
+json="{}"
+if [[ "${#peers[@]}" -ne 0 ]]; then
+    json="{"
+    sep=""
+    for ((i=0; i<${#peers[@]}; i+=2)); do
+        json="${json}${sep}\"${peers[i]}\":${peers[i+1]}"
+        sep=","
+    done
+    json="${json}}"
+fi
+
+printf "Content-Type: application/json\r\n\r\n"
+echo "${json}"
+CGIEOF
+    chmod +x "${www_dir}/cgi-bin/status"
+
+    bashio::log.info "Web interface ready – QR codes and configs served on port 80"
+    bashio::log.info "Status API available at /cgi-bin/status"
+fi
