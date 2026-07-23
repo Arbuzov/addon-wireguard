@@ -6,13 +6,18 @@ FROM ${BUILD_FROM}
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Setup base
+# Bump musl to 1.2.5-r12 first: base:19.0.0 pins musl=r10 in its world, but the
+# current Alpine 3.22 repo's build-base -> musl-dev requires r12, so build-base
+# cannot install otherwise. Drop this once the base image ships r12 itself.
 # hadolint ignore=DL3003
 RUN \
-    apk add --no-cache --virtual .build-dependencies \
+    apk add --no-cache musl=1.2.5-r12 \
+    && apk add --no-cache --virtual .build-dependencies \
         build-base=0.5-r3 \
         git=2.49.1-r0 \
     \
     && apk add --no-cache \
+        busybox-extras=1.37.0-r20 \
         go=1.24.13-r0 \
         iptables=1.8.11-r1 \
         libqrencode-tools=4.1.1-r3 \

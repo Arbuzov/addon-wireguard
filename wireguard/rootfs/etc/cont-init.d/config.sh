@@ -296,13 +296,15 @@ for peer in $(bashio::config 'peers|keys'); do
     echo -n "${name}" > "/var/lib/wireguard/${filename}"
 done
 
-# Generate web interface files if enabled
+# Generate web interface files if enabled. These contain private-key-bearing
+# QR codes and client configs, so they are only ever served behind Home
+# Assistant Ingress (see services.d/webui/run), never on a raw open port.
 if bashio::config.true 'web_interface'; then
     bashio::log.info "Building web interface files..."
 
     www_dir="/var/lib/wireguard/www"
     rm -rf "${www_dir}"
-    mkdir -p "${www_dir}/cgi-bin" "${www_dir}/configs"
+    mkdir -p "${www_dir}/configs"
 
     # HTML header
     cat > "${www_dir}/index.html" << 'HTMLEOF'
@@ -329,7 +331,12 @@ h1{color:#38bdf8;margin:0 0 1.5rem}
 <div class="peers">
 HTMLEOF
 
-    # Add a card for every peer
+    # Add a card for every peer.
+    # SECURITY BOUNDARY: peer name is the only user value interpolated into the
+    # HTML and file paths below. It is safe unescaped ONLY because the schema in
+    # config.yaml constrains it to ^[a-zA-Z0-9-]{1,33}$ (no quotes, <, >, / or
+    # ..). Do not relax that regex without adding HTML-escaping and path
+    # sanitisation here.
     for peer in $(bashio::config 'peers|keys'); do
         name=$(bashio::config "peers[${peer}].name")
         config_dir="/ssl/wireguard/${name}"
@@ -344,7 +351,7 @@ HTMLEOF
             echo "  <div class=\"peer\">"
             echo "    <h2>${name}</h2>"
             echo "    <img src=\"data:image/png;base64,${qr_b64}\" alt=\"QR code for ${name}\">"
-            echo "    <a class=\"btn\" href=\"/configs/${name}.conf\" download=\"${name}.conf\">&#x2B07; Download Config</a>"
+            echo "    <a class=\"btn\" href=\"configs/${name}.conf\" download=\"${name}.conf\">&#x2B07; Download Config</a>"
             echo "  </div>"
         } >> "${www_dir}/index.html"
     done
@@ -356,43 +363,5 @@ HTMLEOF
 </html>
 HTMLEOF
 
-    # CGI script that mirrors the existing JSON status API
-    cat > "${www_dir}/cgi-bin/status" << 'CGIEOF'
-#!/bin/bash
-peers=()
-while IFS=$'\t' read -r -a line; do
-    if [[ "${#line[@]}" -gt 6 ]]; then
-        endpoint="${line[3]}"
-        latest_handshake="${line[5]}"
-        public_key="${line[1]}"
-        transfer_rx="${line[6]}"
-        transfer_tx="${line[7]}"
-
-        filename=$(sha1sum <<< "${public_key}" | awk '{ print $1 }')
-        if [[ -f "/var/lib/wireguard/${filename}" ]]; then
-            name=$(</var/lib/wireguard/${filename})
-            peers+=("${name}")
-            peers+=("{\"endpoint\":\"${endpoint}\",\"latest_handshake\":${latest_handshake},\"transfer_rx\":${transfer_rx},\"transfer_tx\":${transfer_tx}}")
-        fi
-    fi
-done <<< "$(wg show all dump)"
-
-json="{}"
-if [[ "${#peers[@]}" -ne 0 ]]; then
-    json="{"
-    sep=""
-    for ((i=0; i<${#peers[@]}; i+=2)); do
-        json="${json}${sep}\"${peers[i]}\":${peers[i+1]}"
-        sep=","
-    done
-    json="${json}}"
-fi
-
-printf "Content-Type: application/json\r\n\r\n"
-echo "${json}"
-CGIEOF
-    chmod +x "${www_dir}/cgi-bin/status"
-
-    bashio::log.info "Web interface ready – QR codes and configs served on port 80"
-    bashio::log.info "Status API available at /cgi-bin/status"
+    bashio::log.info "Web interface ready – open it via the add-on's Ingress UI"
 fi

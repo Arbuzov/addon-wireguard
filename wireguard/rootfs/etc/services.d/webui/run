@@ -1,0 +1,21 @@
+#!/command/with-contenv bashio
+# ==============================================================================
+# Home Assistant Community Add-on: WireGuard
+# Serves the optional web interface (QR codes + client config downloads).
+#
+# The served files contain the peers' private keys, so they are exposed ONLY
+# through Home Assistant Ingress (see `ingress` in config.yaml) — never on a
+# raw, unauthenticated port. This runs independently of the status API service,
+# which keeps serving JSON on port 80 unchanged.
+# ==============================================================================
+
+if ! bashio::config.true 'web_interface'; then
+    # Disabled: mark run-once so s6 leaves the service down instead of looping.
+    s6-svc -O /run/service/webui
+    exit 0
+fi
+
+bashio::log.info "Starting WireGuard web interface behind Ingress (port 8099)..."
+# httpd is provided by the busybox-extras package (stock busybox lacks the
+# applet). -c applies the Ingress-only source-IP allowlist (see /etc/httpd.conf).
+exec httpd -f -p 8099 -c /etc/httpd.conf -h /var/lib/wireguard/www

@@ -14,3 +14,12 @@ on:
 jobs:
   workflows:
     uses: hassio-addons/workflows/.github/workflows/addon-ci.yaml@main
+
+  webui-smoke:
+    name: Web UI Ingress ACL smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@v4
+      - name: 🚀 Verify httpd availability and Ingress-only ACL
+        run: bash wireguard/tests/webui-acl-smoke.sh
