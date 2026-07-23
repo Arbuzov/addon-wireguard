@@ -341,6 +341,16 @@ HTMLEOF
         name=$(bashio::config "peers[${peer}].name")
         config_dir="/ssl/wireguard/${name}"
 
+        # Both files are generated for every peer in the loop above, so this
+        # should never trigger — but skip (with a warning) rather than emit a
+        # broken card if one is missing, e.g. after a failed qrencode run.
+        if ! bashio::fs.file_exists "${config_dir}/client.conf" \
+            || ! bashio::fs.file_exists "${config_dir}/qrcode.png"; then
+            bashio::log.warning \
+                "Skipping web card for ${name}: client.conf or qrcode.png missing"
+            continue
+        fi
+
         # Make the client config available for download
         cp "${config_dir}/client.conf" "${www_dir}/configs/${name}.conf"
 
