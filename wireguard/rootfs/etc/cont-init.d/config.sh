@@ -351,8 +351,13 @@ HTMLEOF
             continue
         fi
 
-        # Make the client config available for download
-        cp "${config_dir}/client.conf" "${www_dir}/configs/${name}.conf"
+        # Make the client config available for download, from a per-peer
+        # subdirectory so the served basename is always "client.conf". A flat
+        # "configs/${name}.conf" would become "httpd.conf" for a peer named
+        # "httpd" (a schema-valid name), which BusyBox httpd reserves as its
+        # per-directory config file and refuses to serve (403).
+        mkdir -p "${www_dir}/configs/${name}"
+        cp "${config_dir}/client.conf" "${www_dir}/configs/${name}/client.conf"
 
         # Embed the QR code as a base64 data URI
         qr_b64=$(base64 "${config_dir}/qrcode.png" | tr -d '\n')
@@ -361,7 +366,7 @@ HTMLEOF
             echo "  <div class=\"peer\">"
             echo "    <h2>${name}</h2>"
             echo "    <img src=\"data:image/png;base64,${qr_b64}\" alt=\"QR code for ${name}\">"
-            echo "    <a class=\"btn\" href=\"configs/${name}.conf\" download=\"${name}.conf\">&#x2B07; Download Config</a>"
+            echo "    <a class=\"btn\" href=\"configs/${name}/client.conf\" download=\"${name}.conf\">&#x2B07; Download Config</a>"
             echo "  </div>"
         } >> "${www_dir}/index.html"
     done
