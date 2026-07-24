@@ -336,6 +336,28 @@ more severe level, e.g., `debug` also shows `info` messages. By default,
 the `log_level` is set to `info`, which is the recommended setting unless
 you are troubleshooting.
 
+### Option: `web_interface` _(optional)_
+
+When set to `true`, the add-on serves a lightweight web page listing every
+peer with its QR code and a download link for its client configuration. This
+saves you from digging through the `/ssl/wireguard` folder to onboard a new
+device.
+
+Because the QR codes and client configurations contain the peers' **private
+keys**, this page is served exclusively through
+[Home Assistant Ingress][ingress] — open it with the **"Open Web UI"** button
+on the add-on page. Access is gated by your Home Assistant login and the
+connection is encrypted by Home Assistant; the page is never exposed on a raw,
+unauthenticated port.
+
+Enabling this option does **not** change the WireGuard status API (see below);
+it keeps serving JSON on port `80` as before, so existing REST sensors are
+unaffected.
+
+This option is disabled by default. While it is disabled there is nothing to
+serve, so the add-on's **"Open Web UI"** button will report a connection error
+until you enable it.
+
 ## Finding generated client configurations
 
 All generated files are stored in `/ssl/wireguard`. This includes the
@@ -541,6 +563,7 @@ SOFTWARE.
 [forum]: https://community.home-assistant.io/t/home-assistant-community-add-on-wireguard/134662?u=frenck
 [frenck]: https://github.com/frenck
 [ha-rest]: https://www.home-assistant.io/integrations/rest/
+[ingress]: https://developers.home-assistant.io/docs/add-ons/presentation#ingress
 [issue]: https://github.com/hassio-addons/addon-wireguard/issues
 [reddit]: https://reddit.com/r/homeassistant
 [releases]: https://github.com/hassio-addons/addon-wireguard/releases

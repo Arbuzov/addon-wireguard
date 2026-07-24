@@ -15,6 +15,8 @@ ports_description:
   80/tcp: WireGuard peers status API
   51820/udp: "WireGuard: forward this port in your router"
 hassio_api: true
+ingress: true
+ingress_port: 8099
 privileged:
   - NET_ADMIN
 devices:
@@ -35,6 +37,7 @@ options:
       client_allowed_ips: []
 schema:
   log_level: list(trace|debug|info|notice|warning|error|fatal)?
+  web_interface: bool?
   server:
     host: str
     interface: match(^wg([0-9])+$)?
