@@ -356,13 +356,18 @@ HTMLEOF
 
         # Read the QR code as a base64 data URI *before* touching index.html:
         # a failed read must skip the peer, not append a card with a broken
-        # <img> to the page.
-        if ! qr_b64=$(base64 "${config_dir}/qrcode.png" 2>/dev/null | tr -d '\n') \
+        # <img> to the page. Note this deliberately does not pipe into
+        # `tr -d '\n'` to unwrap base64's 76-column output: the pipeline's exit
+        # status would be tr's, so a base64 that dies partway through — leaving
+        # a truncated data URI — would still look like success. Strip the
+        # newlines in the shell instead, keeping base64's own status.
+        if ! qr_b64=$(base64 "${config_dir}/qrcode.png" 2>/dev/null) \
             || bashio::var.is_empty "${qr_b64}"; then
             bashio::log.warning \
                 "Skipping web card for ${name}: could not read qrcode.png"
             continue
         fi
+        qr_b64="${qr_b64//$'\n'/}"
 
         # Make the client config available for download, from a per-peer
         # subdirectory so the served basename is always "client.conf". A flat
