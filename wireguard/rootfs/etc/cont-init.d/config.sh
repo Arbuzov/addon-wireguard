@@ -302,14 +302,24 @@ done
 # Generate web interface files if enabled. These contain private-key-bearing
 # QR codes and client configs, so they are only ever served behind Home
 # Assistant Ingress (see services.d/webui/run), never on a raw open port.
+# Wiped unconditionally first, so turning the option off also drops the key
+# material generated while it was on.
+www_dir="/var/lib/wireguard/www"
+rm -rf "${www_dir}" ||
+    bashio::exit.nok "Could not remove stale web interface files"
+
 if bashio::config.true 'web_interface'; then
     bashio::log.info "Building web interface files..."
 
-    www_dir="/var/lib/wireguard/www"
-    rm -rf "${www_dir}"
-    mkdir -p "${www_dir}/configs"
+    # 0700/0600 throughout: the tree holds peer private keys.
+    install -d -m 0700 "${www_dir}/configs" ||
+        bashio::exit.nok "Could not create web interface folder"
 
-    # HTML header
+    # HTML header. Created empty with an explicit mode first — the page embeds
+    # every peer's private key, and `>` alone would leave it at the umask.
+    install -m 0600 /dev/null "${www_dir}/index.html" ||
+        bashio::exit.nok "Could not create web interface index"
+
     cat > "${www_dir}/index.html" << 'HTMLEOF'
 <!DOCTYPE html>
 <html lang="en">
@@ -374,13 +384,17 @@ HTMLEOF
         # "configs/${name}.conf" would become "httpd.conf" for a peer named
         # "httpd" (a schema-valid name), which BusyBox httpd reserves as its
         # per-directory config file and refuses to serve (403).
-        # ${www_dir} is recreated from scratch above, so there is no previous
-        # copy to preserve — on failure just drop the peer's directory again so
-        # the page never links to a config that is missing or truncated.
+        # 0700/0600 rather than the umask default: this tree holds every peer's
+        # private key. ${www_dir} is recreated from scratch above, so there is
+        # no previous copy to preserve — on failure just drop the peer's
+        # directory again, so the page never links to a config that is missing
+        # or truncated. A failed card skips the peer rather than aborting init:
+        # the VPN itself must not stop serving because a QR page could not be
+        # built.
         peer_www_dir="${www_dir}/configs/${name}"
-        if ! mkdir -p "${peer_www_dir}" \
-            || ! cp "${config_dir}/client.conf" \
-                "${peer_www_dir}/client.conf" 2>/dev/null; then
+        if ! install -d -m 0700 "${peer_www_dir}" \
+            || ! install -m 0600 "${config_dir}/client.conf" \
+                "${peer_www_dir}/client.conf"; then
             bashio::log.warning \
                 "Skipping web card for ${name}: could not publish client.conf"
             rm -rf "${peer_www_dir}"

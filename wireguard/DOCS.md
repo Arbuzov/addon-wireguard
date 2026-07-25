@@ -346,19 +346,19 @@ device.
 Because the QR codes and client configurations contain the peers' **private
 keys**, this page is served exclusively through
 [Home Assistant Ingress][ingress] — open it with the **"Open Web UI"** button
-on the add-on page. Access is gated by your Home Assistant login, and the page
-is never exposed on a raw, unauthenticated port. Transport encryption is
-whatever your Home Assistant instance itself uses: Ingress proxies the page over
-the internal Supervisor network, so it is only encrypted end-to-end if you reach
-Home Assistant over HTTPS.
+on the add-on page. Access is gated by your Home Assistant login and protected
+by the transport security of your Home Assistant session (so use HTTPS if you
+reach Home Assistant over an untrusted network); the page is never exposed on a
+raw, unauthenticated port. Note that any user who can open this add-on sees
+**every** peer's key material, not just their own.
 
 Enabling this option does **not** change the WireGuard status API (see below);
 it keeps serving JSON on port `80` as before, so existing REST sensors are
 unaffected.
 
-This option is disabled by default. While it is disabled there is nothing to
-serve, so the add-on's **"Open Web UI"** button will report a connection error
-until you enable it.
+This option is disabled by default. While it is disabled the **"Open Web UI"**
+button shows a short "web interface disabled" notice, and any previously
+generated QR codes and config copies are wiped on the next add-on start.
 
 ## Finding generated client configurations
 
