@@ -31,10 +31,18 @@ docker run --rm --entrypoint /bin/busybox \
 
     mkdir -p /tmp/www; echo "PRIVATE-KEY-MATERIAL" > /tmp/www/index.html
 
+    # Poll instead of a fixed sleep: a loaded CI runner can need more than 2s.
+    wait_code() {
+        for _ in $(seq 1 20); do
+            c=$(wget -S -qO- "http://127.0.0.1:$1/" 2>&1 | awk "/HTTP\//{print \$2; exit}")
+            [ -n "${c}" ] && { echo "${c}"; return; }
+            sleep 0.5
+        done
+    }
+
     # 1) A client that is NOT the Ingress proxy must be denied by the repo ACL.
     httpd -f -p 8099 -c /etc/httpd.conf -h /tmp/www &
-    sleep 2
-    code=$(wget -S -qO- http://127.0.0.1:8099/ 2>&1 | awk "/HTTP\//{print \$2; exit}")
+    code=$(wait_code 8099)
     [ "${code}" = "403" ] || { echo "FAIL: expected 403 for non-Ingress client, got ${code}"; exit 1; }
     echo "OK: non-Ingress client denied (403)"
 
@@ -42,8 +50,7 @@ docker run --rm --entrypoint /bin/busybox \
     #    active (accept + deny both work), not a blanket deny that fakes success.
     printf "A:127.0.0.1\nD:*\n" > /tmp/allow.conf
     httpd -f -p 8100 -c /tmp/allow.conf -h /tmp/www &
-    sleep 2
-    code=$(wget -S -qO- http://127.0.0.1:8100/ 2>&1 | awk "/HTTP\//{print \$2; exit}")
+    code=$(wait_code 8100)
     [ "${code}" = "200" ] || { echo "FAIL: expected 200 for allowed client, got ${code}"; exit 1; }
     echo "OK: allowed client served (200)"
 '

@@ -299,14 +299,24 @@ done
 # Generate web interface files if enabled. These contain private-key-bearing
 # QR codes and client configs, so they are only ever served behind Home
 # Assistant Ingress (see services.d/webui/run), never on a raw open port.
+# Wiped unconditionally first, so turning the option off also drops the key
+# material generated while it was on.
+www_dir="/var/lib/wireguard/www"
+rm -rf "${www_dir}" ||
+    bashio::exit.nok "Could not remove stale web interface files"
+
 if bashio::config.true 'web_interface'; then
     bashio::log.info "Building web interface files..."
 
-    www_dir="/var/lib/wireguard/www"
-    rm -rf "${www_dir}"
-    mkdir -p "${www_dir}/configs"
+    # 0700/0600 throughout: the tree holds peer private keys.
+    install -d -m 0700 "${www_dir}/configs" ||
+        bashio::exit.nok "Could not create web interface folder"
 
-    # HTML header
+    # HTML header. Created empty with an explicit mode first — the page embeds
+    # every peer's private key, and `>` alone would leave it at the umask.
+    install -m 0600 /dev/null "${www_dir}/index.html" ||
+        bashio::exit.nok "Could not create web interface index"
+
     cat > "${www_dir}/index.html" << 'HTMLEOF'
 <!DOCTYPE html>
 <html lang="en">
@@ -356,11 +366,18 @@ HTMLEOF
         # "configs/${name}.conf" would become "httpd.conf" for a peer named
         # "httpd" (a schema-valid name), which BusyBox httpd reserves as its
         # per-directory config file and refuses to serve (403).
-        mkdir -p "${www_dir}/configs/${name}"
-        cp "${config_dir}/client.conf" "${www_dir}/configs/${name}/client.conf"
+        install -d -m 0700 "${www_dir}/configs/${name}" ||
+            bashio::exit.nok "Could not create web config folder for ${name}"
+        install -m 0600 "${config_dir}/client.conf" \
+            "${www_dir}/configs/${name}/client.conf" ||
+            bashio::exit.nok "Could not copy client config for ${name}"
 
         # Embed the QR code as a base64 data URI
+        # Emptiness check rather than $? — the pipe hides base64's exit code
+        # and this script deliberately does not run with pipefail.
         qr_b64=$(base64 "${config_dir}/qrcode.png" | tr -d '\n')
+        bashio::var.has_value "${qr_b64}" ||
+            bashio::exit.nok "Could not encode QR code for ${name}"
 
         {
             echo "  <div class=\"peer\">"

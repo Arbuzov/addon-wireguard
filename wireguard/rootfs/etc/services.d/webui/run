@@ -10,9 +10,19 @@
 # ==============================================================================
 
 if ! bashio::config.true 'web_interface'; then
-    # Disabled: mark run-once so s6 leaves the service down instead of looping.
-    s6-svc -O /run/service/webui
-    exit 0
+    # `ingress: true` is static, so Home Assistant shows the "Open Web UI"
+    # button regardless. Serve a notice instead of exiting: an empty port there
+    # reads as a broken add-on rather than a disabled feature.
+    notice_dir="/var/lib/wireguard/www-disabled"
+    mkdir -p "${notice_dir}"
+    cat > "${notice_dir}/index.html" << 'HTMLEOF'
+<!DOCTYPE html><meta charset="UTF-8"><title>WireGuard</title>
+<body style="font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;padding:2rem">
+<h1 style="color:#38bdf8">Web interface disabled</h1>
+<p>Set <code>web_interface: true</code> in the add-on configuration and restart
+to show peer QR codes and client config downloads here.</p>
+HTMLEOF
+    exec httpd -f -p 8099 -c /etc/httpd.conf -h "${notice_dir}"
 fi
 
 bashio::log.info "Starting WireGuard web interface behind Ingress (port 8099)..."
