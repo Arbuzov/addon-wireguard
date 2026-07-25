@@ -19,15 +19,18 @@ declare mtu
 declare name
 declare peer_private_key
 declare peer_public_key
+declare peer_www_dir
 declare port
 declare post_down
 declare post_up
 declare pre_down
 declare pre_shared_key
 declare pre_up
+declare qr_b64
 declare server_private_key
 declare server_public_key
 declare table
+declare www_dir
 
 if ! bashio::fs.directory_exists '/ssl/wireguard'; then
     mkdir -p /ssl/wireguard ||
@@ -351,16 +354,33 @@ HTMLEOF
             continue
         fi
 
+        # Read the QR code as a base64 data URI *before* touching index.html:
+        # a failed read must skip the peer, not append a card with a broken
+        # <img> to the page.
+        if ! qr_b64=$(base64 "${config_dir}/qrcode.png" 2>/dev/null | tr -d '\n') \
+            || bashio::var.is_empty "${qr_b64}"; then
+            bashio::log.warning \
+                "Skipping web card for ${name}: could not read qrcode.png"
+            continue
+        fi
+
         # Make the client config available for download, from a per-peer
         # subdirectory so the served basename is always "client.conf". A flat
         # "configs/${name}.conf" would become "httpd.conf" for a peer named
         # "httpd" (a schema-valid name), which BusyBox httpd reserves as its
         # per-directory config file and refuses to serve (403).
-        mkdir -p "${www_dir}/configs/${name}"
-        cp "${config_dir}/client.conf" "${www_dir}/configs/${name}/client.conf"
-
-        # Embed the QR code as a base64 data URI
-        qr_b64=$(base64 "${config_dir}/qrcode.png" | tr -d '\n')
+        # ${www_dir} is recreated from scratch above, so there is no previous
+        # copy to preserve — on failure just drop the peer's directory again so
+        # the page never links to a config that is missing or truncated.
+        peer_www_dir="${www_dir}/configs/${name}"
+        if ! mkdir -p "${peer_www_dir}" \
+            || ! cp "${config_dir}/client.conf" \
+                "${peer_www_dir}/client.conf" 2>/dev/null; then
+            bashio::log.warning \
+                "Skipping web card for ${name}: could not publish client.conf"
+            rm -rf "${peer_www_dir}"
+            continue
+        fi
 
         {
             echo "  <div class=\"peer\">"
