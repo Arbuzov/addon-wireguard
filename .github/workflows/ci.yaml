@@ -21,5 +21,11 @@ jobs:
     steps:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@v4
+        with:
+          # The job runs repository-controlled shell after checkout; no later
+          # step authenticates to Git, so do not leave a token in .git/config.
+          persist-credentials: false
+      # Asserts against what the add-on declares, so a dropped busybox-extras
+      # or a loosened Ingress ACL cannot pass unnoticed.
       - name: 🚀 Verify httpd availability and Ingress-only ACL
         run: bash wireguard/tests/webui-acl-smoke.sh

@@ -19,15 +19,18 @@ declare mtu
 declare name
 declare peer_private_key
 declare peer_public_key
+declare peer_www_dir
 declare port
 declare post_down
 declare post_up
 declare pre_down
 declare pre_shared_key
 declare pre_up
+declare qr_b64
 declare server_private_key
 declare server_public_key
 declare table
+declare www_dir
 
 if ! bashio::fs.directory_exists '/ssl/wireguard'; then
     mkdir -p /ssl/wireguard ||
@@ -361,23 +364,42 @@ HTMLEOF
             continue
         fi
 
+        # Read the QR code as a base64 data URI *before* touching index.html:
+        # a failed read must skip the peer, not append a card with a broken
+        # <img> to the page. Note this deliberately does not pipe into
+        # `tr -d '\n'` to unwrap base64's 76-column output: the pipeline's exit
+        # status would be tr's, so a base64 that dies partway through — leaving
+        # a truncated data URI — would still look like success. Strip the
+        # newlines in the shell instead, keeping base64's own status.
+        if ! qr_b64=$(base64 "${config_dir}/qrcode.png" 2>/dev/null) \
+            || bashio::var.is_empty "${qr_b64}"; then
+            bashio::log.warning \
+                "Skipping web card for ${name}: could not read qrcode.png"
+            continue
+        fi
+        qr_b64="${qr_b64//$'\n'/}"
+
         # Make the client config available for download, from a per-peer
         # subdirectory so the served basename is always "client.conf". A flat
         # "configs/${name}.conf" would become "httpd.conf" for a peer named
         # "httpd" (a schema-valid name), which BusyBox httpd reserves as its
         # per-directory config file and refuses to serve (403).
-        install -d -m 0700 "${www_dir}/configs/${name}" ||
-            bashio::exit.nok "Could not create web config folder for ${name}"
-        install -m 0600 "${config_dir}/client.conf" \
-            "${www_dir}/configs/${name}/client.conf" ||
-            bashio::exit.nok "Could not copy client config for ${name}"
-
-        # Embed the QR code as a base64 data URI
-        # Emptiness check rather than $? — the pipe hides base64's exit code
-        # and this script deliberately does not run with pipefail.
-        qr_b64=$(base64 "${config_dir}/qrcode.png" | tr -d '\n')
-        bashio::var.has_value "${qr_b64}" ||
-            bashio::exit.nok "Could not encode QR code for ${name}"
+        # 0700/0600 rather than the umask default: this tree holds every peer's
+        # private key. ${www_dir} is recreated from scratch above, so there is
+        # no previous copy to preserve — on failure just drop the peer's
+        # directory again, so the page never links to a config that is missing
+        # or truncated. A failed card skips the peer rather than aborting init:
+        # the VPN itself must not stop serving because a QR page could not be
+        # built.
+        peer_www_dir="${www_dir}/configs/${name}"
+        if ! install -d -m 0700 "${peer_www_dir}" \
+            || ! install -m 0600 "${config_dir}/client.conf" \
+                "${peer_www_dir}/client.conf"; then
+            bashio::log.warning \
+                "Skipping web card for ${name}: could not publish client.conf"
+            rm -rf "${peer_www_dir}"
+            continue
+        fi
 
         {
             echo "  <div class=\"peer\">"
