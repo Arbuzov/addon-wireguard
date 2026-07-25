@@ -25,7 +25,7 @@ jobs:
           # The job runs repository-controlled shell after checkout; no later
           # step authenticates to Git, so do not leave a token in .git/config.
           persist-credentials: false
-      # Builds the add-on image and asserts against it, so a dropped
-      # busybox-extras or a loosened ACL cannot pass unnoticed.
+      # Asserts against what the add-on declares, so a dropped busybox-extras
+      # or a loosened Ingress ACL cannot pass unnoticed.
       - name: 🚀 Verify httpd availability and Ingress-only ACL
         run: bash wireguard/tests/webui-acl-smoke.sh
