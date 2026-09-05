@@ -68,13 +68,20 @@ jobs:
           # GHCR repository names must be lowercase; the GitHub owner is not.
           echo "owner=${OWNER,,}" >> "$GITHUB_OUTPUT"
 
-          # Home Assistant pulls `<image>:<config.yaml version>`, so the
-          # version tag has to be exactly that or the app cannot be installed.
-          # A published release tags its own name on top.
+          # Home Assistant pulls `<image>:<config.yaml version>`, so config.yaml
+          # is the single source of truth for the version — this fork is
+          # installed as a custom repository, which means Home Assistant reads
+          # config.yaml straight off the default branch. A release must
+          # therefore be tagged to match it; tagging the image after the
+          # release name instead would publish an image nothing ever pulls.
           version=$(yq --no-colors eval '.version' "${TARGET}/config.yaml")
           if [[ "${EVENT_NAME}" = "release" ]]; then
-            version="${TAG_NAME,,}"
-            version="${version#v}"
+            tag="${TAG_NAME,,}"
+            tag="${tag#v}"
+            if [[ "${tag}" != "${version}" ]]; then
+              echo "::error ::Release ${TAG_NAME} does not match ${TARGET}/config.yaml (${version}). Tag it v${version}, or bump config.yaml first."
+              exit 1
+            fi
           fi
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 

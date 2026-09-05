@@ -1,0 +1,75 @@
+---
+name: Version guard
+
+# Home Assistant decides an update exists by comparing the version in
+# wireguard/config.yaml against the one it has installed — this fork is
+# installed as a custom repository, so it reads that file straight off the
+# default branch. A change that ships without bumping it therefore lands in
+# the registry and is never pulled: the app keeps running the old image and
+# nothing anywhere reports a problem. That silent failure is what this guards.
+#
+# Fork-only, like the rest of the publishing setup: upstream keeps
+# `version: dev` in config.yaml and versions its releases elsewhere, so this
+# must never run on a pull request carried into the upstream project.
+
+# yamllint disable-line rule:truthy
+on:
+  pull_request:
+    paths:
+      - "wireguard/**"
+
+permissions:
+  contents: read
+
+jobs:
+  version-bumped:
+    name: Version bumped
+    if: github.repository_owner == 'Arbuzov'
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The job runs repository-controlled shell after checkout; no later
+          # step authenticates to Git, so do not leave a token in .git/config.
+          persist-credentials: false
+      - name: 🔍 Compare the version against the base branch
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          config="wireguard/config.yaml"
+
+          # Public repository, so an unauthenticated fetch of the base is fine.
+          git fetch --no-tags --depth=1 origin "${BASE_REF}"
+
+          base=$(git show "FETCH_HEAD:${config}" | yq --no-colors eval '.version' -)
+          head=$(yq --no-colors eval '.version' "${config}")
+
+          # `dev` is upstream's placeholder and sorts above any real version,
+          # so it has to be handled before the comparison rather than by it.
+          # On this fork it is never a shippable value: Home Assistant would
+          # read `dev` forever and never see another update.
+          if [ "${head}" = "dev" ]; then
+            echo "::error file=${config}::version is \`dev\`, which is upstream's placeholder. This fork is installed as a custom repository, so Home Assistant reads this file directly and would never see another update. Set a real version."
+            exit 1
+          fi
+          if [ "${base}" = "dev" ]; then
+            echo "Version dev -> ${head} (first versioned change)"
+            exit 0
+          fi
+
+          if [ "${base}" = "${head}" ]; then
+            echo "::error file=${config}::This pull request changes the app but leaves version at ${head}. Home Assistant would never offer the update. Bump it: MINOR for a feature, PATCH for a fix."
+            exit 1
+          fi
+
+          # Equal is already handled above, so the higher of the two must be
+          # ours. sort -V, not a string compare: 1.10.0 has to beat 1.9.0.
+          highest=$(printf '%s\n%s\n' "${base}" "${head}" | sort -V | tail -1)
+          if [ "${highest}" != "${head}" ]; then
+            echo "::error file=${config}::Version goes backwards, ${base} -> ${head}. Home Assistant only offers an update when the version increases."
+            exit 1
+          fi
+
+          echo "Version ${base} -> ${head}"
