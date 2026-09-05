@@ -350,10 +350,11 @@ you are troubleshooting.
 
 ### Option: `web_interface` _(optional)_
 
-When set to `true`, the app serves a lightweight web page listing every
-peer with its QR code and a download link for its client configuration. This
-saves you from digging through the `/ssl/wireguard` folder to onboard a new
-device.
+When set to `true`, the app serves a lightweight web page with a tab per peer.
+Pick a peer to show its QR code and a download link for its client
+configuration. Only one QR code is on screen at a time, so a phone camera has
+a single target to lock onto. This saves you from digging through the
+`/ssl/wireguard` folder to onboard a new device.
 
 Because the QR codes and client configurations contain the peers' **private
 keys**, this page is served exclusively through

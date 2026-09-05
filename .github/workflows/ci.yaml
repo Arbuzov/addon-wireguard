@@ -34,3 +34,5 @@ jobs:
       # or a loosened Ingress ACL cannot pass unnoticed.
       - name: 🚀 Verify httpd availability and Ingress-only ACL
         run: bash wireguard/tests/webui-acl-smoke.sh
+      - name: 🚀 Verify the web UI shows one QR code at a time
+        run: bash wireguard/tests/webui-single-qr.sh
