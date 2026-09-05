@@ -24,6 +24,7 @@ devices:
 map:
   - ssl:rw
 options:
+  web_interface: false
   server:
     host: myautomatedhome.duckdns.org
     addresses:
