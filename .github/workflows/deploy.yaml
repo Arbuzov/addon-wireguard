@@ -1,6 +1,10 @@
 ---
 name: Deploy
 
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 # yamllint disable-line rule:truthy
 on:
   push:
@@ -9,6 +13,7 @@ on:
   release:
     types:
       - published
+  workflow_dispatch:
 
 jobs:
   ci:
@@ -19,11 +24,124 @@ jobs:
       security-events: write
     uses: hassio-addons/workflows/.github/workflows/app-ci.yaml@e0c532a7b0fb264b3ff0c718c2c0308a0c8c1390 # v4.0.0
 
-  deploy:
+  # This fork publishes its own images instead of calling the shared
+  # app-deploy.yaml, for two reasons:
+  #   1. that workflow tags images `ghcr.io/${{ github.repository_owner }}/...`,
+  #      which is `Arbuzov` here — GHCR rejects uppercase repository names and
+  #      it offers no way to override the owner's casing, only the slug;
+  #   2. its publish-* jobs dispatch to `<owner>/repository-edge` with a
+  #      DISPATCH_TOKEN, which is the upstream add-on-repository-updater
+  #      infrastructure. This fork is installed directly as a custom repository
+  #      (see repository.yaml), so there is nothing to notify.
+  # The multi-arch manifest is skipped for the same reason: config.yaml pulls
+  # per-architecture images via `image: .../{arch}`, so a manifest list would
+  # never be used.
+  information:
+    name: ℹ️ Gather app information
     needs: ci
+    runs-on: ubuntu-latest
+    outputs:
+      architectures: ${{ steps.information.outputs.architectures }}
+      build: ${{ steps.information.outputs.build }}
+      description: ${{ steps.information.outputs.description }}
+      name: ${{ steps.information.outputs.name }}
+      owner: ${{ steps.image.outputs.owner }}
+      slug: ${{ steps.information.outputs.slug }}
+      target: ${{ steps.information.outputs.target }}
+      version: ${{ steps.image.outputs.version }}
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 🚀 Run app information action
+        id: information
+        uses: frenck/action-addon-information@ce1377e9851cf569c29329e65fb2c57e67ca0f69 # v1.4.2
+      - name: ℹ️ Compose image owner and version tag
+        id: image
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          OWNER: ${{ github.repository_owner }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          TARGET: ${{ steps.information.outputs.target }}
+        run: |
+          # GHCR repository names must be lowercase; the GitHub owner is not.
+          echo "owner=${OWNER,,}" >> "$GITHUB_OUTPUT"
+
+          # Home Assistant pulls `<image>:<config.yaml version>`, so the
+          # version tag has to be exactly that or the app cannot be installed.
+          # A published release tags its own name on top.
+          version=$(yq --no-colors eval '.version' "${TARGET}/config.yaml")
+          if [[ "${EVENT_NAME}" = "release" ]]; then
+            version="${TAG_NAME,,}"
+            version="${version#v}"
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: 👷 Build & Deploy ${{ matrix.architecture }}
+    needs: information
     permissions:
       contents: read
       packages: write
-    uses: hassio-addons/workflows/.github/workflows/app-deploy.yaml@e0c532a7b0fb264b3ff0c718c2c0308a0c8c1390 # v4.0.0
-    secrets:
-      DISPATCH_TOKEN: ${{ secrets.DISPATCH_TOKEN }}
+    runs-on: ${{ matrix.architecture == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    strategy:
+      matrix:
+        architecture: ${{ fromJson(needs.information.outputs.architectures) }}
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 🏗 Set up Docker Buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+      - name: ℹ️ Compose build flags
+        id: flags
+        env:
+          ARCHITECTURE: ${{ matrix.architecture }}
+          BUILD_FILE: ${{ needs.information.outputs.build }}
+        run: |
+          echo "date=$(date +"%Y-%m-%dT%H:%M:%SZ")" >> "$GITHUB_OUTPUT"
+          from=$(yq --no-colors eval ".build_from.${ARCHITECTURE}" "${BUILD_FILE}")
+          echo "from=${from}" >> "$GITHUB_OUTPUT"
+
+          if [[ "${ARCHITECTURE}" = "amd64" ]]; then
+            echo "platform=linux/amd64" >> "$GITHUB_OUTPUT"
+          elif [[ "${ARCHITECTURE}" = "aarch64" ]]; then
+            echo "platform=linux/arm64/v8" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error ::Could not determine platform for architecture ${ARCHITECTURE}"
+            exit 1
+          fi
+      - name: 🏗 Login to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: 🚀 Build and push
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          outputs: type=image,push=true,compression=zstd,compression-level=9,force-compression=true,oci-mediatypes=true
+          # yamllint disable rule:line-length
+          tags: |
+            ghcr.io/${{ needs.information.outputs.owner }}/${{ needs.information.outputs.slug }}/${{ matrix.architecture }}:edge
+            ghcr.io/${{ needs.information.outputs.owner }}/${{ needs.information.outputs.slug }}/${{ matrix.architecture }}:${{ needs.information.outputs.version }}
+          # yamllint enable rule:line-length
+          # zizmor: ignore[template-injection] - path input to action, not shell-executed
+          context: ${{ needs.information.outputs.target }}
+          file: ${{ needs.information.outputs.target }}/Dockerfile
+          cache-from: |
+            type=gha,scope=${{ matrix.architecture }}
+            type=registry,ref=ghcr.io/${{ needs.information.outputs.owner }}/${{ needs.information.outputs.slug }}/${{ matrix.architecture }}:edge
+          cache-to: type=gha,mode=max,scope=${{ matrix.architecture }}
+          platforms: ${{ steps.flags.outputs.platform }}
+          build-args: |
+            BUILD_ARCH=${{ matrix.architecture }}
+            BUILD_DATE=${{ steps.flags.outputs.date }}
+            BUILD_DESCRIPTION=${{ needs.information.outputs.description }}
+            BUILD_FROM=${{ steps.flags.outputs.from }}
+            BUILD_NAME=${{ needs.information.outputs.name }}
+            BUILD_REF=${{ github.sha }}
+            BUILD_REPOSITORY=${{ github.repository }}
+            BUILD_VERSION=${{ needs.information.outputs.version }}
