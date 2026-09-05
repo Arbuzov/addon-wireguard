@@ -36,7 +36,9 @@ trap 'rm -rf "${work}"' EXIT
 # follows the code instead of drifting off it.
 start="$(grep -n '^www_dir="/var/lib/wireguard/www"$' "${gen}" | cut -d: -f1)"
 if [[ -z "${start}" ]]; then
-    echo "FAIL: could not find the web interface block in ${gen}"
+    echo "FAIL: could not find the web interface block in ${gen}."
+    echo "      It is anchored on the line 'www_dir=\"/var/lib/wireguard/www\"';"
+    echo "      if that assignment moved or was reformatted, re-anchor this test."
     exit 1
 fi
 tail -n "+${start}" "${gen}" > "${work}/block.sh"

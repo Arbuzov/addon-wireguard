@@ -364,10 +364,12 @@ HTMLEOF
 
     # Add a card for every peer.
     # SECURITY BOUNDARY: peer name is the only user value interpolated into the
-    # HTML and file paths below. It is safe unescaped ONLY because the schema in
-    # config.yaml constrains it to ^[a-zA-Z0-9-]{1,33}$ (no quotes, <, >, / or
-    # ..). Do not relax that regex without adding HTML-escaping and path
-    # sanitisation here.
+    # HTML and file paths below. It is safe unescaped ONLY because config.yaml
+    # constrains it to
+    #   match(^[a-zA-Z0-9\d](?:[a-zA-Z0-9\d]|-(?=[a-zA-Z0-9\d])){0,32}$)
+    # — at most 33 characters drawn from [a-zA-Z0-9-], so no quote, angle
+    # bracket, slash or dot can reach the page or a path. Do not relax that
+    # schema without adding HTML-escaping and path sanitisation here.
     for peer in $(bashio::config 'peers|keys'); do
         name=$(bashio::config "peers[${peer}].name")
         config_dir="/ssl/wireguard/${name}"

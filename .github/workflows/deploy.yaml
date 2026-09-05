@@ -22,7 +22,7 @@ jobs:
       contents: read
       packages: read
       security-events: write
-    uses: hassio-addons/workflows/.github/workflows/app-ci.yaml@e0c532a7b0fb264b3ff0c718c2c0308a0c8c1390 # v4.0.0
+    uses: ./.github/workflows/fork-app-ci.yaml
 
   # This fork publishes its own images instead of calling the shared
   # app-deploy.yaml, for two reasons:
@@ -53,6 +53,8 @@ jobs:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The version gate below compares against the tip this push replaced.
+          fetch-depth: 0
           persist-credentials: false
       - name: 🚀 Run app information action
         id: information
@@ -60,6 +62,7 @@ jobs:
       - name: ℹ️ Compose image owner and version tag
         id: image
         env:
+          BEFORE: ${{ github.event.before }}
           EVENT_NAME: ${{ github.event_name }}
           OWNER: ${{ github.repository_owner }}
           TAG_NAME: ${{ github.event.release.tag_name }}
@@ -68,14 +71,84 @@ jobs:
           # GHCR repository names must be lowercase; the GitHub owner is not.
           echo "owner=${OWNER,,}" >> "$GITHUB_OUTPUT"
 
-          # Home Assistant pulls `<image>:<config.yaml version>`, so the
-          # version tag has to be exactly that or the app cannot be installed.
-          # A published release tags its own name on top.
+          # Home Assistant pulls `<image>:<config.yaml version>`, so config.yaml
+          # is the single source of truth for the version — this fork is
+          # installed as a custom repository, which means Home Assistant reads
+          # config.yaml straight off the default branch. A release must
+          # therefore be tagged to match it; tagging the image after the
+          # release name instead would publish an image nothing ever pulls.
           version=$(yq --no-colors eval '.version' "${TARGET}/config.yaml")
           if [[ "${EVENT_NAME}" = "release" ]]; then
-            version="${TAG_NAME,,}"
-            version="${version#v}"
+            tag="${TAG_NAME,,}"
+            tag="${tag#v}"
+            if [[ "${tag}" != "${version}" ]]; then
+              echo "::error ::Release ${TAG_NAME} does not match ${TARGET}/config.yaml (${version}). Tag it v${version}, or bump config.yaml first."
+              exit 1
+            fi
           fi
+
+          # Publishing is the last point where an unversioned change can still
+          # be stopped, and unlike version-guard.yaml nothing bypasses it — that
+          # guard only sees pull requests, so a direct push to the default
+          # branch would otherwise reach the registry unbumped and simply never
+          # be pulled. `dev` is upstream's placeholder and is never shippable
+          # here: Home Assistant would read it once and never see a change again.
+          if [[ -z "${version}" || "${version}" = "null" || "${version}" = "dev" ]]; then
+            echo "::error ::${TARGET}/config.yaml has version '${version}'. This fork is installed as a custom repository, so Home Assistant reads that value directly and would never offer another update. Set a real version."
+            exit 1
+          fi
+
+          # Judged against the tip this push replaced, so a push carrying
+          # several commits is measured by its net effect: bumping in the first
+          # and touching the app again in the second is a bump, not a
+          # violation. Release and manual runs are exempt, both being
+          # deliberate republishes of a version that already exists.
+          zero="0000000000000000000000000000000000000000"
+          previous_ref=""
+          if [[ "${EVENT_NAME}" = "push" ]]; then
+            if git rev-parse -q --verify "${BEFORE}^{commit}" > /dev/null; then
+              previous_ref="${BEFORE}"
+            elif [[ "${BEFORE}" = "${zero}" ]]; then
+              echo "::notice ::Branch just created, no replaced tip to compare against."
+            else
+              # A force-push. The replaced tip is gone, so nothing reachable
+              # from here says which version was last published, and HEAD^
+              # would only see the final commit — a force-push whose app change
+              # sits in an earlier commit would sail through it. Refuse rather
+              # than guess: rewriting the default branch is deliberate enough
+              # that confirming the publish by hand is not a burden.
+              echo "::error ::This push replaced ${BEFORE}, which is no longer in the repository, so the version cannot be checked against what was last published. Re-run this workflow manually (workflow_dispatch) to publish ${version}."
+              exit 1
+            fi
+          fi
+
+          if [[ -n "${previous_ref}" ]] &&
+            ! git diff --quiet "${previous_ref}" HEAD -- "${TARGET}"; then
+            previous=$(git show "${previous_ref}:${TARGET}/config.yaml" |
+              yq --no-colors eval '.version' -)
+            if [[ "${previous}" = "${version}" ]]; then
+              echo "::error ::This push changes ${TARGET}/ but leaves version at ${version}. Home Assistant compares that string against what it has installed, so it would never pull the image this build is about to publish. Bump ${TARGET}/config.yaml."
+              exit 1
+            fi
+
+            # Differing is not enough: Home Assistant offers an update only
+            # when the version RISES, so a lowered one publishes an image it
+            # will never ask for — the same silent nothing-happens as leaving
+            # it alone. version-guard.yaml applies this rule to pull requests;
+            # both gates have to agree or the stricter one is decorative.
+            # `dev` is excluded rather than compared, since it sorts above
+            # every real version: the first push that leaves the placeholder
+            # behind is a rise, not a regression.
+            if [[ "${previous}" != "dev" ]]; then
+              highest=$( { echo "${previous}"; echo "${version}"; } |
+                sort -V | tail -1 )
+              if [[ "${highest}" != "${version}" ]]; then
+                echo "::error ::This push takes version backwards, ${previous} -> ${version}. Home Assistant only offers an update when the version increases, so it would never pull the image this build is about to publish."
+                exit 1
+              fi
+            fi
+          fi
+
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
   deploy:
