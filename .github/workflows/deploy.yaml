@@ -98,23 +98,27 @@ jobs:
             exit 1
           fi
 
-          # Compare against the tip this push replaced rather than HEAD^, so a
-          # push carrying several commits is judged by its net effect: bumping
-          # in the first commit and touching the app again in the second is a
-          # bump, not a violation. A force-push leaves that tip unreachable and
-          # a brand new branch has none at all, so fall back to HEAD^ there —
-          # narrower, but it still refuses the plain case of a last commit that
-          # changed the app without raising the version. Release and manual
-          # runs are exempt: both deliberately republish an existing version.
+          # Judged against the tip this push replaced, so a push carrying
+          # several commits is measured by its net effect: bumping in the first
+          # and touching the app again in the second is a bump, not a
+          # violation. Release and manual runs are exempt, both being
+          # deliberate republishes of a version that already exists.
           zero="0000000000000000000000000000000000000000"
           previous_ref=""
           if [[ "${EVENT_NAME}" = "push" ]]; then
-            if [[ "${BEFORE}" != "${zero}" ]] &&
-              git rev-parse -q --verify "${BEFORE}^{commit}" > /dev/null; then
+            if git rev-parse -q --verify "${BEFORE}^{commit}" > /dev/null; then
               previous_ref="${BEFORE}"
-            elif git rev-parse -q --verify "HEAD~1^{commit}" > /dev/null; then
-              previous_ref="HEAD^"
-              echo "::notice ::Previous tip unreachable, comparing against HEAD^."
+            elif [[ "${BEFORE}" = "${zero}" ]]; then
+              echo "::notice ::Branch just created, no replaced tip to compare against."
+            else
+              # A force-push. The replaced tip is gone, so nothing reachable
+              # from here says which version was last published, and HEAD^
+              # would only see the final commit — a force-push whose app change
+              # sits in an earlier commit would sail through it. Refuse rather
+              # than guess: rewriting the default branch is deliberate enough
+              # that confirming the publish by hand is not a burden.
+              echo "::error ::This push replaced ${BEFORE}, which is no longer in the repository, so the version cannot be checked against what was last published. Re-run this workflow manually (workflow_dispatch) to publish ${version}."
+              exit 1
             fi
           fi
 

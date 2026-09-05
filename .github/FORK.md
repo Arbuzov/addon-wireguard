@@ -41,12 +41,13 @@ the old one. Nothing errors. Two things stop it:
   drags upstream's placeholder back in cannot ship either.
 
 Publishing is judged against the tip the push replaced, not the previous
-commit, so a push carrying several commits is measured by its net effect. When
-that tip is gone — a force-push — it falls back to comparing against `HEAD^`,
-which is narrower but still refuses a last commit that changed the app without
-raising the version. A release and a manual run skip the comparison entirely,
-since both deliberately republish a version that already exists; the `dev`
-rejection still applies to them.
+commit, so a push carrying several commits is measured by its net effect.
+Force-push the default branch and that tip is gone, taking with it any way to
+tell which version was last published — so the deploy fails rather than
+guessing. Re-run it from the Actions tab (`workflow_dispatch`) once the branch
+is where you want it. A release and a manual run skip the comparison for the
+same reason: both deliberately republish a version that already exists. The
+`dev` rejection still applies to every one of them.
 
 ## Two tracks: fork and upstream
 
