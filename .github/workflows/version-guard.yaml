@@ -40,11 +40,25 @@ jobs:
           set -euo pipefail
           config="wireguard/config.yaml"
 
-          # Public repository, so an unauthenticated fetch of the base is fine.
-          git fetch --no-tags --depth=1 origin "${BASE_REF}"
+          # The base branch as it stands NOW, not the commit this pull request
+          # branched from: the question is whether merging raises the version
+          # above what Home Assistant currently sees, and the base moves while
+          # a pull request is open. Public repository, so an unauthenticated
+          # fetch is fine. Not shallow — only two file trees are needed, and a
+          # depth-limited fetch into a full clone buys nothing for a repository
+          # this size while adding a way for the fetch to behave oddly.
+          if ! git fetch --no-tags origin "${BASE_REF}"; then
+            echo "::error ::Could not fetch the base branch ${BASE_REF}."
+            exit 1
+          fi
 
-          base=$(git show "FETCH_HEAD:${config}" | yq --no-colors eval '.version' -)
+          # The checked-out tree is refs/pull/N/merge, so this reads the MERGED
+          # config.yaml — what the base branch will hold if this is merged.
           head=$(yq --no-colors eval '.version' "${config}")
+          if ! base=$(git show "FETCH_HEAD:${config}" | yq --no-colors eval '.version' -); then
+            echo "::error ::Could not read ${config} from ${BASE_REF}."
+            exit 1
+          fi
 
           # `dev` is upstream's placeholder and sorts above any real version,
           # so it has to be handled before the comparison rather than by it.

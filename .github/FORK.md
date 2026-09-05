@@ -36,9 +36,10 @@ the old one. Nothing errors. Two things stop it:
   that touches `wireguard/` without raising the version. Early feedback, but
   it only ever sees pull requests.
 - [`deploy.yaml`](workflows/deploy.yaml) repeats the check at publish time and
-  refuses to build. Nothing bypasses this one — a push straight to `main` is
-  caught too — and it also rejects `version: dev` outright, so a merge that
-  drags upstream's placeholder back in cannot ship either.
+  refuses to build. No ordinary push gets past it, a push straight to `main`
+  included, and it rejects `version: dev` outright on every event, so a merge
+  that drags upstream's placeholder back in cannot ship either. The only ways
+  through are the two deliberate ones below.
 
 Publishing is judged against the tip the push replaced, not the previous
 commit, so a push carrying several commits is measured by its net effect.
