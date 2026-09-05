@@ -17,8 +17,11 @@ permissions:
   security-events: write
 
 jobs:
+  # FORK-ONLY EDIT: upstream calls the shared workflow here. Its app
+  # linter runs in community mode, which requires `version: dev` - a
+  # value this fork cannot ship. See .github/workflows/fork-app-ci.yaml.
   workflows:
-    uses: hassio-addons/workflows/.github/workflows/app-ci.yaml@e0c532a7b0fb264b3ff0c718c2c0308a0c8c1390 # v4.0.0
+    uses: ./.github/workflows/fork-app-ci.yaml
 
   webui-smoke:
     name: Web UI Ingress ACL smoke test

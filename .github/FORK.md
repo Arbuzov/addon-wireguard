@@ -5,7 +5,7 @@ top. It is installed in Home Assistant as a **custom repository**, which
 changes two things compared to upstream and drives everything below:
 
 - Home Assistant reads `wireguard/config.yaml` straight off the default
-  branch, so the `version:` in that file *is* the version users see.
+  branch, so the `version:` in that file _is_ the version users see.
 - The images come from this fork's own registry namespace
   (`ghcr.io/arbuzov/wireguard/{arch}`), published by
   [`deploy.yaml`](workflows/deploy.yaml) on every push to `main`.
@@ -17,9 +17,9 @@ The fork runs its own `1.x.y` line, deliberately decoupled from upstream's
 stamps real versions only at release time, which a custom repository cannot
 use.
 
-| Change | Bump |
-| --- | --- |
-| New feature | MINOR — `1.2.0` → `1.3.0` |
+| Change                           | Bump                      |
+| -------------------------------- | ------------------------- |
+| New feature                      | MINOR — `1.2.0` → `1.3.0` |
 | Fix, or merging upstream commits | PATCH — `1.2.0` → `1.2.1` |
 
 Bump `wireguard/config.yaml` **in the same pull request as the change**.
@@ -50,6 +50,16 @@ is where you want it. A release and a manual run skip the comparison for the
 same reason: both deliberately republish a version that already exists. The
 `dev` rejection still applies to every one of them.
 
+That rule collides head-on with upstream's own tooling, which is worth knowing
+before you touch CI. The shared `app-ci.yaml` runs the app linter in community
+mode, and community mode _requires_ `version: dev` — the very value rejected
+above. A reusable workflow cannot be partly adopted, so the fork keeps a
+snapshot of it in [`fork-app-ci.yaml`](workflows/fork-app-ci.yaml) with that
+one line changed and the two community rules worth keeping re-asserted by
+hand. The alternative was a permanently red check, which trains everyone to
+ignore the app linter altogether. Refresh the snapshot by diffing it against
+the shared workflow at the SHA named in its header.
+
 ## Two tracks: fork and upstream
 
 Features are developed here and offered upstream separately. The two tracks
@@ -78,16 +88,18 @@ gh pr create --repo hassio-addons/app-wireguard --base main
 
 Nothing fork-specific may appear in an upstream branch:
 
-| Fork-only | |
-| --- | --- |
-| `repository.yaml` | declares the custom repository |
-| `.github/FORK.md` | this file |
-| `.github/release-drafter.yml` | |
-| `.github/workflows/deploy.yaml` | publishes to this fork's namespace |
-| `.github/workflows/sync-upstream.yaml` | |
-| `.github/workflows/version-guard.yaml` | |
-| `wireguard/config.yaml` → `image:` | points at this fork's images |
-| `wireguard/config.yaml` → `version:` | upstream keeps `dev` |
+| Fork-only                                          |                                    |
+| -------------------------------------------------- | ---------------------------------- |
+| `repository.yaml`                                  | declares the custom repository     |
+| `.github/FORK.md`                                  | this file                          |
+| `.github/release-drafter.yml`                      |                                    |
+| `.github/workflows/deploy.yaml`                    | publishes to this fork's namespace |
+| `.github/workflows/sync-upstream.yaml`             |                                    |
+| `.github/workflows/version-guard.yaml`             |                                    |
+| `wireguard/config.yaml` → `image:`                 | points at this fork's images       |
+| `wireguard/config.yaml` → `version:`               | upstream keeps `dev`               |
+| `.github/workflows/fork-app-ci.yaml`               | snapshot of the shared CI          |
+| `.github/workflows/ci.yaml` → the `workflows:` job | upstream calls the shared workflow |
 
 Everything else — the app itself, its docs, its tests, and the CI jobs that
 run them — is meant to be portable, so keep it that way when you touch it.
