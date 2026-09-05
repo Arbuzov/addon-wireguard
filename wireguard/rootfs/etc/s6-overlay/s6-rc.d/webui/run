@@ -8,6 +8,9 @@
 # through Home Assistant Ingress (see `ingress` in config.yaml) — never on a
 # raw, unauthenticated port. This runs independently of the status API service,
 # which keeps serving JSON on port 80 unchanged.
+#
+# 8099 is Home Assistant's default `ingress_port`, which is why config.yaml
+# does not declare one. Change both together or Ingress stops reaching this.
 # ==============================================================================
 
 if ! bashio::config.true 'web_interface'; then
