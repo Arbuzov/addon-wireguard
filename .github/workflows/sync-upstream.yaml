@@ -2,13 +2,16 @@
 name: Sync upstream
 
 # Mirrors the upstream project's default branch into this fork's `upstream`
-# branch, so it can be diffed against, rebased onto or cherry-picked from at
-# any time without polluting this fork's own `main`.
+# branch, then opens a pull request from it into this fork's own default
+# branch whenever upstream has moved ahead.
 #
 # Notes:
 #   - Scheduled runs only ever fire from a repository's default branch.
 #   - GitHub disables schedules after 60 days without repository activity;
 #     re-enable them from the Actions tab, or run this workflow manually.
+#   - Everything here acts as GITHUB_TOKEN, and GitHub deliberately does not
+#     start workflow runs for its pushes or pull requests. So no checks appear
+#     on the pull request itself; CI runs on the default branch after merge.
 
 # yamllint disable-line rule:truthy
 on:
@@ -20,11 +23,13 @@ env:
   UPSTREAM_REPOSITORY: hassio-addons/app-wireguard
   UPSTREAM_BRANCH: main
   MIRROR_BRANCH: upstream
+  TARGET_BRANCH: main
 
 concurrency: sync-upstream
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   mirror:
@@ -46,6 +51,7 @@ jobs:
         run: |
           git fetch --no-tags \
             "https://github.com/${UPSTREAM_REPOSITORY}.git" "${UPSTREAM_BRANCH}"
+          echo "UPSTREAM_SHA=$(git rev-parse FETCH_HEAD)" >> "${GITHUB_ENV}"
           # Empty while the mirror branch does not exist, which recreates it.
           mirror_ref="$(git ls-remote --heads origin "${MIRROR_BRANCH}")"
           expected="$(printf '%s' "${mirror_ref}" | cut -f1)"
@@ -55,3 +61,44 @@ jobs:
           git push \
             --force-with-lease="refs/heads/${MIRROR_BRANCH}:${expected}" \
             origin "FETCH_HEAD:refs/heads/${MIRROR_BRANCH}"
+
+      - name: 📝 Propose the new upstream commits
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          behind="$(git rev-list --count "origin/${TARGET_BRANCH}..${UPSTREAM_SHA}")"
+          if [ "${behind}" -eq 0 ]; then
+            echo "::notice::${TARGET_BRANCH} already has every upstream commit."
+            exit 0
+          fi
+          # An open pull request needs no second one: the mirror push above has
+          # already updated it with whatever upstream added.
+          open="$(gh pr list --head "${MIRROR_BRANCH}" --base "${TARGET_BRANCH}" \
+            --state open --json number --jq '.[].number')"
+          if [ -n "${open}" ]; then
+            echo "::notice::Pull request #${open} is open and now up to date."
+            exit 0
+          fi
+          gh pr create \
+            --base "${TARGET_BRANCH}" \
+            --head "${MIRROR_BRANCH}" \
+            --title "⬆️ Merge ${behind} new commit(s) from ${UPSTREAM_REPOSITORY}" \
+            --body-file - <<EOF
+          Opened automatically by the \`Sync upstream\` workflow.
+
+          The \`${MIRROR_BRANCH}\` branch mirrors
+          \`${UPSTREAM_REPOSITORY}@${UPSTREAM_BRANCH}\`, now at \`${UPSTREAM_SHA}\`.
+          It carries the ${behind} commit(s) upstream gained into
+          \`${TARGET_BRANCH}\`.
+
+          If GitHub cannot merge it automatically, resolve the conflicts locally:
+
+          \`\`\`bash
+          git fetch origin
+          git switch ${TARGET_BRANCH}
+          git merge origin/${MIRROR_BRANCH}
+          \`\`\`
+
+          No checks run here — GitHub does not start workflows for a
+          \`GITHUB_TOKEN\` pull request. CI runs on \`${TARGET_BRANCH}\` after merge.
+          EOF
