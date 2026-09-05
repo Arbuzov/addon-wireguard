@@ -1,0 +1,57 @@
+---
+name: Sync upstream
+
+# Mirrors the upstream project's default branch into this fork's `upstream`
+# branch, so it can be diffed against, rebased onto or cherry-picked from at
+# any time without polluting this fork's own `main`.
+#
+# Notes:
+#   - Scheduled runs only ever fire from a repository's default branch.
+#   - GitHub disables schedules after 60 days without repository activity;
+#     re-enable them from the Actions tab, or run this workflow manually.
+
+# yamllint disable-line rule:truthy
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+env:
+  UPSTREAM_REPOSITORY: hassio-addons/app-wireguard
+  UPSTREAM_BRANCH: main
+  MIRROR_BRANCH: upstream
+
+concurrency: sync-upstream
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    name: Mirror upstream
+    # Guard against this workflow being carried into a pull request against
+    # the upstream project, where it must never run. Keyed on the owner rather
+    # than the full name, so renaming this fork does not silently stop it.
+    if: github.repository_owner == 'Arbuzov'
+    runs-on: ubuntu-latest
+    steps:
+      - name: ⤵️ Check out code from GitHub
+        uses: actions/checkout@v4
+        with:
+          # Keep the full history: a push from a shallow clone is refused
+          # with "shallow update not allowed".
+          fetch-depth: 0
+
+      - name: 🔄 Mirror the upstream default branch
+        run: |
+          git fetch --no-tags \
+            "https://github.com/${UPSTREAM_REPOSITORY}.git" "${UPSTREAM_BRANCH}"
+          # Empty while the mirror branch does not exist, which recreates it.
+          mirror_ref="$(git ls-remote --heads origin "${MIRROR_BRANCH}")"
+          expected="$(printf '%s' "${mirror_ref}" | cut -f1)"
+          # Force, because upstream may rewrite history; with-lease against the
+          # tip we expect, so a push that landed on the mirror meanwhile aborts
+          # the run instead of being silently discarded.
+          git push \
+            --force-with-lease="refs/heads/${MIRROR_BRANCH}:${expected}" \
+            origin "FETCH_HEAD:refs/heads/${MIRROR_BRANCH}"
