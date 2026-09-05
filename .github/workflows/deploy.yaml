@@ -53,6 +53,8 @@ jobs:
       - name: ⤵️ Check out code from GitHub
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The version gate below compares against the tip this push replaced.
+          fetch-depth: 0
           persist-credentials: false
       - name: 🚀 Run app information action
         id: information
@@ -60,6 +62,7 @@ jobs:
       - name: ℹ️ Compose image owner and version tag
         id: image
         env:
+          BEFORE: ${{ github.event.before }}
           EVENT_NAME: ${{ github.event_name }}
           OWNER: ${{ github.repository_owner }}
           TAG_NAME: ${{ github.event.release.tag_name }}
@@ -83,6 +86,37 @@ jobs:
               exit 1
             fi
           fi
+
+          # Publishing is the last point where an unversioned change can still
+          # be stopped, and unlike version-guard.yaml nothing bypasses it — that
+          # guard only sees pull requests, so a direct push to the default
+          # branch would otherwise reach the registry unbumped and simply never
+          # be pulled. `dev` is upstream's placeholder and is never shippable
+          # here: Home Assistant would read it once and never see a change again.
+          if [[ -z "${version}" || "${version}" = "null" || "${version}" = "dev" ]]; then
+            echo "::error ::${TARGET}/config.yaml has version '${version}'. This fork is installed as a custom repository, so Home Assistant reads that value directly and would never offer another update. Set a real version."
+            exit 1
+          fi
+
+          # Compare against the tip this push replaced rather than HEAD^, so a
+          # push carrying several commits is judged by its net effect: bumping
+          # in the first commit and touching the app again in the second is a
+          # bump, not a violation. Skipped when the branch is new (all-zero) or
+          # the old tip is gone, e.g. after a force-push, and on release and
+          # manual runs, which deliberately republish an existing version.
+          zero="0000000000000000000000000000000000000000"
+          if [[ "${EVENT_NAME}" = "push" && "${BEFORE}" != "${zero}" ]] &&
+            git rev-parse -q --verify "${BEFORE}^{commit}" > /dev/null; then
+            if ! git diff --quiet "${BEFORE}" HEAD -- "${TARGET}"; then
+              previous=$(git show "${BEFORE}:${TARGET}/config.yaml" |
+                yq --no-colors eval '.version' -)
+              if [[ "${previous}" = "${version}" ]]; then
+                echo "::error ::This push changes ${TARGET}/ but leaves version at ${version}. Home Assistant compares that string against what it has installed, so it would never pull the image this build is about to publish. Bump ${TARGET}/config.yaml."
+                exit 1
+              fi
+            fi
+          fi
+
           echo "version=${version}" >> "$GITHUB_OUTPUT"
 
   deploy:

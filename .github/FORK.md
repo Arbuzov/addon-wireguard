@@ -30,11 +30,20 @@ tags the image with it, and a release (if you cut one) must be tagged
 Forgetting the bump is the failure this setup is shaped around, because it is
 invisible: the new image reaches the registry, Home Assistant compares two
 identical version strings, decides there is nothing to do, and keeps running
-the old one. Nothing errors. [`version-guard.yaml`](workflows/version-guard.yaml)
-fails any pull request that touches `wireguard/` without raising the version.
+the old one. Nothing errors. Two things stop it:
 
-The guard only runs on pull requests — pushed straight to `main`, an
-unbumped change still ships silently.
+- [`version-guard.yaml`](workflows/version-guard.yaml) fails any pull request
+  that touches `wireguard/` without raising the version. Early feedback, but
+  it only ever sees pull requests.
+- [`deploy.yaml`](workflows/deploy.yaml) repeats the check at publish time and
+  refuses to build. Nothing bypasses this one — a push straight to `main` is
+  caught too — and it also rejects `version: dev` outright, so a merge that
+  drags upstream's placeholder back in cannot ship either.
+
+Publishing is judged against the tip the push replaced, not the previous
+commit, so a push carrying several commits is measured by its net effect. A
+release and a manual run skip that comparison, since both deliberately
+republish a version that already exists.
 
 ## Two tracks: fork and upstream
 
