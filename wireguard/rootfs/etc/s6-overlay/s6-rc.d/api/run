@@ -1,6 +1,7 @@
 #!/command/with-contenv bashio
+# shellcheck shell=bash
 # ==============================================================================
-# Home Assistant Community Add-on: WireGuard
+# Home Assistant Community App: WireGuard
 # The most simple HTTP API you've ever seen.
 # Provides status of WireGuard peers.
 # ==============================================================================
