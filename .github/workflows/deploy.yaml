@@ -130,6 +130,23 @@ jobs:
               echo "::error ::This push changes ${TARGET}/ but leaves version at ${version}. Home Assistant compares that string against what it has installed, so it would never pull the image this build is about to publish. Bump ${TARGET}/config.yaml."
               exit 1
             fi
+
+            # Differing is not enough: Home Assistant offers an update only
+            # when the version RISES, so a lowered one publishes an image it
+            # will never ask for — the same silent nothing-happens as leaving
+            # it alone. version-guard.yaml applies this rule to pull requests;
+            # both gates have to agree or the stricter one is decorative.
+            # `dev` is excluded rather than compared, since it sorts above
+            # every real version: the first push that leaves the placeholder
+            # behind is a rise, not a regression.
+            if [[ "${previous}" != "dev" ]]; then
+              highest=$( { echo "${previous}"; echo "${version}"; } |
+                sort -V | tail -1 )
+              if [[ "${highest}" != "${version}" ]]; then
+                echo "::error ::This push takes version backwards, ${previous} -> ${version}. Home Assistant only offers an update when the version increases, so it would never pull the image this build is about to publish."
+                exit 1
+              fi
+            fi
           fi
 
           echo "version=${version}" >> "$GITHUB_OUTPUT"
