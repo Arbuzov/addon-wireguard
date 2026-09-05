@@ -1,6 +1,7 @@
 #!/command/with-contenv bashio
+# shellcheck shell=bash
 # ==============================================================================
-# Home Assistant Community Add-on: WireGuard
+# Home Assistant Community App: WireGuard
 # Serves the optional web interface (QR codes + client config downloads).
 #
 # The served files contain the peers' private keys, so they are exposed ONLY
@@ -12,7 +13,7 @@
 if ! bashio::config.true 'web_interface'; then
     # `ingress: true` is static, so Home Assistant shows the "Open Web UI"
     # button regardless. Serve a notice instead of exiting: an empty port there
-    # reads as a broken add-on rather than a disabled feature. The notice ships
+    # reads as a broken app rather than a disabled feature. The notice ships
     # in the image (rootfs/var/www-disabled) rather than being written here:
     # it is a constant, and generating it at every start only adds a way to end
     # up serving an empty document root.

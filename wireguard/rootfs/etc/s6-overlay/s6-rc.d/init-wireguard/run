@@ -1,6 +1,7 @@
 #!/command/with-contenv bashio
+# shellcheck shell=bash
 # ==============================================================================
-# Home Assistant Community Add-on: WireGuard
+# Home Assistant Community App: WireGuard
 # Creates the interface configuration
 # ==============================================================================
 declare -a list
@@ -111,7 +112,7 @@ if [[ $(</proc/sys/net/ipv4/ip_forward) -eq 0 ]]; then
     bashio::log.warning "however, you cannot access your home network or"
     bashio::log.warning "the internet via the VPN tunnel."
     bashio::log.warning
-    bashio::log.warning "Please consult the add-on documentation on how"
+    bashio::log.warning "Please consult the app documentation on how"
     bashio::log.warning "to resolve this."
     bashio::log.warning
 
@@ -189,7 +190,7 @@ for peer in $(bashio::config 'peers|keys'); do
     endpoint=$(bashio::config "peers[${peer}].endpoint")
     fwmark=$(bashio::config "peers[${peer}].fwmark")
     host=$(bashio::config 'server.host')
-    port=$(bashio::addon.port "51820/udp")
+    port=$(bashio::app.port "51820/udp")
     pre_shared_key=$(bashio::config "peers[${peer}].pre_shared_key")
 
     # Create directory for storing client configuration
@@ -301,7 +302,7 @@ done
 
 # Generate web interface files if enabled. These contain private-key-bearing
 # QR codes and client configs, so they are only ever served behind Home
-# Assistant Ingress (see services.d/webui/run), never on a raw open port.
+# Assistant Ingress (see s6-rc.d/webui/run), never on a raw open port.
 # Wiped unconditionally first, so turning the option off also drops the key
 # material generated while it was on.
 www_dir="/var/lib/wireguard/www"
@@ -417,5 +418,5 @@ HTMLEOF
 </html>
 HTMLEOF
 
-    bashio::log.info "Web interface ready – open it via the add-on's Ingress UI"
+    bashio::log.info "Web interface ready – open it via the app's Ingress UI"
 fi
