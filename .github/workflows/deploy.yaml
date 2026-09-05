@@ -101,19 +101,30 @@ jobs:
           # Compare against the tip this push replaced rather than HEAD^, so a
           # push carrying several commits is judged by its net effect: bumping
           # in the first commit and touching the app again in the second is a
-          # bump, not a violation. Skipped when the branch is new (all-zero) or
-          # the old tip is gone, e.g. after a force-push, and on release and
-          # manual runs, which deliberately republish an existing version.
+          # bump, not a violation. A force-push leaves that tip unreachable and
+          # a brand new branch has none at all, so fall back to HEAD^ there —
+          # narrower, but it still refuses the plain case of a last commit that
+          # changed the app without raising the version. Release and manual
+          # runs are exempt: both deliberately republish an existing version.
           zero="0000000000000000000000000000000000000000"
-          if [[ "${EVENT_NAME}" = "push" && "${BEFORE}" != "${zero}" ]] &&
-            git rev-parse -q --verify "${BEFORE}^{commit}" > /dev/null; then
-            if ! git diff --quiet "${BEFORE}" HEAD -- "${TARGET}"; then
-              previous=$(git show "${BEFORE}:${TARGET}/config.yaml" |
-                yq --no-colors eval '.version' -)
-              if [[ "${previous}" = "${version}" ]]; then
-                echo "::error ::This push changes ${TARGET}/ but leaves version at ${version}. Home Assistant compares that string against what it has installed, so it would never pull the image this build is about to publish. Bump ${TARGET}/config.yaml."
-                exit 1
-              fi
+          previous_ref=""
+          if [[ "${EVENT_NAME}" = "push" ]]; then
+            if [[ "${BEFORE}" != "${zero}" ]] &&
+              git rev-parse -q --verify "${BEFORE}^{commit}" > /dev/null; then
+              previous_ref="${BEFORE}"
+            elif git rev-parse -q --verify "HEAD~1^{commit}" > /dev/null; then
+              previous_ref="HEAD^"
+              echo "::notice ::Previous tip unreachable, comparing against HEAD^."
+            fi
+          fi
+
+          if [[ -n "${previous_ref}" ]] &&
+            ! git diff --quiet "${previous_ref}" HEAD -- "${TARGET}"; then
+            previous=$(git show "${previous_ref}:${TARGET}/config.yaml" |
+              yq --no-colors eval '.version' -)
+            if [[ "${previous}" = "${version}" ]]; then
+              echo "::error ::This push changes ${TARGET}/ but leaves version at ${version}. Home Assistant compares that string against what it has installed, so it would never pull the image this build is about to publish. Bump ${TARGET}/config.yaml."
+              exit 1
             fi
           fi
 

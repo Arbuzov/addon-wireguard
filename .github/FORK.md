@@ -41,9 +41,12 @@ the old one. Nothing errors. Two things stop it:
   drags upstream's placeholder back in cannot ship either.
 
 Publishing is judged against the tip the push replaced, not the previous
-commit, so a push carrying several commits is measured by its net effect. A
-release and a manual run skip that comparison, since both deliberately
-republish a version that already exists.
+commit, so a push carrying several commits is measured by its net effect. When
+that tip is gone — a force-push — it falls back to comparing against `HEAD^`,
+which is narrower but still refuses a last commit that changed the app without
+raising the version. A release and a manual run skip the comparison entirely,
+since both deliberately republish a version that already exists; the `dev`
+rejection still applies to them.
 
 ## Two tracks: fork and upstream
 
