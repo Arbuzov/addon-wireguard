@@ -320,6 +320,10 @@ if bashio::config.true 'web_interface'; then
     install -d -m 0700 "${www_dir}/configs" ||
         bashio::exit.nok "Could not create web interface folder"
 
+    # Statistics are optional: failure to copy the script must not stop the VPN.
+    install -m 0600 /var/lib/wireguard-webui/stats.js "${www_dir}/stats.js" ||
+        bashio::log.warning "Could not install the web UI statistics script"
+
     # HTML header. Created empty with an explicit mode first — the page embeds
     # every peer's private key, and `>` alone would leave it at the umask.
     install -m 0600 /dev/null "${www_dir}/index.html" ||
@@ -426,6 +430,7 @@ HTMLEOF
             echo "  <label for=\"peer-${name}\">${name}</label>"
             echo "  <div class=\"peer\">"
             echo "    <h2>${name}</h2>"
+            echo "    <p data-peer-stats=\"${name}\">WireGuard statistics unavailable</p>"
             echo "    <img src=\"data:image/png;base64,${qr_b64}\" alt=\"QR code for ${name}\">"
             echo "    <a class=\"btn\" href=\"configs/${name}/client.conf\" download=\"${name}.conf\">&#x2B07; Download Config</a>"
             echo "  </div>"
@@ -438,6 +443,7 @@ HTMLEOF
     # HTML footer
     cat >> "${www_dir}/index.html" << 'HTMLEOF'
 </div>
+<script src="stats.js"></script>
 </body>
 </html>
 HTMLEOF

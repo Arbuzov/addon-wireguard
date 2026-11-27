@@ -365,6 +365,13 @@ reach Home Assistant over an untrusted network); the page is never exposed on a
 raw, unauthenticated port. Note that any user who can open this app sees
 **every** peer's key material, not just their own.
 
+Each peer tab shows the last handshake and the cumulative bytes received and
+sent by this WireGuard server. The numbers refresh about every 10 seconds and
+may reset when WireGuard restarts. A peer without a handshake shows **Never**;
+an older handshake does not necessarily mean the peer is offline. No endpoint
+or keys are included in the statistics file, which uses the same Ingress access
+as the page.
+
 Enabling this option does **not** change the WireGuard status API (see below);
 it keeps serving JSON on port `80` as before, so existing REST sensors are
 unaffected.

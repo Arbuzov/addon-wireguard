@@ -82,6 +82,7 @@ docker run --rm --cap-add=NET_ADMIN --entrypoint /bin/bash "${image}" -c '
 
     mkdir -p /tmp/www
     echo "PRIVATE-KEY-MATERIAL" > /tmp/www/index.html
+    printf "{}\n" > /tmp/www/stats.json
 
     # Take the Supervisor Ingress proxy address, so the allowed source is
     # exercised for real rather than stood in for by a local-only test rule.
@@ -115,5 +116,13 @@ docker run --rm --cap-add=NET_ADMIN --entrypoint /bin/bash "${image}" -c '
         exit 1
     }
     echo "OK: non-Ingress client denied (403)"
+
+    # Statistics follow the same authorization path as the peer cards.
+    code=$(curl -s -D /tmp/stats-headers -o /dev/null -w "%{http_code}" http://172.30.32.2:8099/stats.json)
+    [ "${code}" = "200" ] || { echo "FAIL: Ingress stats returned ${code}"; exit 1; }
+    grep -qi "^Date: " /tmp/stats-headers || { echo "FAIL: stats response is missing Date"; exit 1; }
+    code=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8099/stats.json)
+    [ "${code}" = "403" ] || { echo "FAIL: non-Ingress stats returned ${code}"; exit 1; }
+    echo "OK: statistics use the same Ingress ACL"
 '
 echo "Web UI ACL smoke test passed."

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# The web UI shows one peer's QR code at a time (CSS-only tabs, no JavaScript).
+# The web UI shows one peer's QR code at a time (CSS-only tabs).
 # Every way that breaks breaks silently — the page still renders, just with all
 # the cards showing again, or with none of them showing. So rather than assert
 # that the generator *looks* a certain way, this runs the generator's own web
@@ -54,9 +54,10 @@ printf 'not-a-real-png' > "${work}/ssl/bravo/qrcode.png"
 printf 'not-a-real-png' > "${work}/ssl/charlie/qrcode.png"
 
 # Stub bashio and run the block. /ssl/wireguard and /var/lib are rewritten to
-# the temp tree; nothing else in the block is touched.
+# the temp tree and the packaged script; nothing else in the block is touched.
 sed -e "s#/var/lib/wireguard/www#${work}/www#" \
     -e "s#/ssl/wireguard#${work}/ssl#" \
+    -e "s#/var/lib/wireguard-webui/stats.js#${addon_dir}/rootfs/var/lib/wireguard-webui/stats.js#" \
     "${work}/block.sh" > "${work}/run.sh"
 
 bashio_stub="
@@ -122,5 +123,12 @@ if ! grep -qF 'input:checked + label + .peer{display:block}' "${page}"; then
     echo "FAIL: no rule reveals the selected peer card, the page would be blank"
     exit 1
 fi
+
+# Statistics must be attached to the matching card and loaded relative to Ingress.
+grep -qF '<p data-peer-stats="bravo">' "${page}"
+grep -qF '<p data-peer-stats="charlie">' "${page}"
+grep -qF '<script src="stats.js"></script>' "${page}"
+cmp "${work}/www/stats.js" "${addon_dir}/rootfs/var/lib/wireguard-webui/stats.js"
+cmp "${work}/www/configs/bravo/client.conf" "${work}/ssl/bravo/client.conf"
 
 echo "PASS: web UI shows exactly one QR code at a time"
