@@ -1,4 +1,4 @@
-ARG BUILD_FROM=ghcr.io/hassio-addons/base:21.0.3
+ARG BUILD_FROM=ghcr.io/hassio-addons/base:21.1.0
 # hadolint ignore=DL3006
 FROM ${BUILD_FROM}
 
@@ -10,11 +10,11 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN \
     apk add --no-cache --virtual .build-dependencies \
         build-base=0.5-r4 \
-        git=2.54.0-r0 \
+        git=2.54.1-r0 \
     \
     && apk add --no-cache \
         busybox-extras=1.37.0-r31 \
-        go=1.26.3-r0 \
+        go=1.26.11-r0 \
         iptables=1.8.13-r0 \
         libqrencode-tools=4.1.1-r3 \
         openresolv=3.17.4-r0 \

@@ -54,9 +54,9 @@ That rule collides head-on with upstream's own tooling, which is worth knowing
 before you touch CI. The shared `app-ci.yaml` runs the app linter in community
 mode, and community mode _requires_ `version: dev` — the very value rejected
 above. A reusable workflow cannot be partly adopted, so the fork keeps a
-snapshot of it in [`fork-app-ci.yaml`](workflows/fork-app-ci.yaml) with that
-one line changed and the two community rules worth keeping re-asserted by
-hand. The alternative was a permanently red check, which trains everyone to
+snapshot of it in [`fork-app-ci.yaml`](workflows/fork-app-ci.yaml). It skips
+community mode, re-asserts the remaining two community rules, and lowercases
+the registry cache owner to match the fork’s published image names. The alternative was a permanently red check, which trains everyone to
 ignore the app linter altogether. Refresh the snapshot by diffing it against
 the shared workflow at the SHA named in its header.
 
