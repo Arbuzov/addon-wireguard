@@ -39,3 +39,5 @@ jobs:
         run: bash wireguard/tests/webui-acl-smoke.sh
       - name: 🚀 Verify the web UI shows one QR code at a time
         run: bash wireguard/tests/webui-single-qr.sh
+      - name: 🚀 Verify live WireGuard statistics
+        run: bash wireguard/tests/webui-stats.sh
