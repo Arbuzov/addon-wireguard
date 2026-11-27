@@ -1,6 +1,6 @@
 ---
 # Snapshot of hassio-addons/workflows/.github/workflows/app-ci.yaml
-# at e0c532a7b0fb264b3ff0c718c2c0308a0c8c1390 (v4.0.0), with one line changed.
+# at adec4b96071354cc44924a6ef9975ff60cf9ddd9 (v5.0.0), with fork adjustments.
 #
 # The shared workflow runs the app linter in community mode, and community mode
 # requires `version: dev` in config.yaml. This fork cannot satisfy that: it is
@@ -89,6 +89,7 @@ jobs:
       - name: 🚀 Re-assert the community rules worth keeping
         env:
           BUILD_FILE: ${{ needs.information.outputs.build }}
+          IMAGE_OWNER: ${{ github.repository_owner }}
           TARGET: ${{ needs.information.outputs.target }}
         run: |
           set -euo pipefail
@@ -189,7 +190,7 @@ jobs:
         with:
           persist-credentials: false
       - name: 🚀 Run zizmor
-        uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
+        uses: zizmorcore/zizmor-action@85b2b9fb8e3325e7a23d7d0a9d7ba5ae0f999e3e # v0.7.1
 
   dependency-review:
     name: Dependency review
@@ -224,16 +225,18 @@ jobs:
         with:
           persist-credentials: false
       - name: 🏗 Set up Docker Buildx
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - name: ℹ️ Compose build flags
         id: flags
         env:
           ARCHITECTURE: ${{ matrix.architecture }}
           BUILD_FILE: ${{ needs.information.outputs.build }}
+          IMAGE_OWNER: ${{ github.repository_owner }}
         run: |
           echo "date=$(date +"%Y-%m-%dT%H:%M:%SZ")" >> "$GITHUB_OUTPUT"
           from=$(yq --no-colors eval ".build_from.${ARCHITECTURE}" "${BUILD_FILE}")
           echo "from=${from}" >> "$GITHUB_OUTPUT"
+          echo "owner=${IMAGE_OWNER,,}" >> "$GITHUB_OUTPUT"
 
           if [[ "${ARCHITECTURE}" = "amd64" ]]; then
             echo "platform=linux/amd64" >> "$GITHUB_OUTPUT"
@@ -244,7 +247,7 @@ jobs:
             exit 1
           fi
       - name: 🚀 Build
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           push: false
           # zizmor: ignore[template-injection] - path input to action, not shell-executed
@@ -252,7 +255,7 @@ jobs:
           file: ${{ needs.information.outputs.target }}/Dockerfile
           cache-from: |
             type=gha,scope=${{ matrix.architecture }}
-            type=registry,ref=ghcr.io/${{ github.repository_owner }}/${{ needs.information.outputs.slug }}/${{ matrix.architecture }}:edge
+            type=registry,ref=ghcr.io/${{ steps.flags.outputs.owner }}/${{ needs.information.outputs.slug }}/${{ matrix.architecture }}:edge
           cache-to: type=gha,mode=max,scope=${{ matrix.architecture }}
           platforms: ${{ steps.flags.outputs.platform }}
           build-args: |
