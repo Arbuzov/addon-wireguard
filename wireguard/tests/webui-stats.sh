@@ -15,6 +15,8 @@ printf -v first '%043d=' 1
 printf -v second '%043d=' 2
 printf -v unknown '%043d=' 3
 printf -v incomplete '%043d=' 4
+expected_time=$(date +%s)
+
 for pair in "${first}:phone" "${second}:constructor" "${incomplete}:missing"; do
     key="${pair%:*}"
     hash=$(sha1sum <<< "${key}")
@@ -73,7 +75,8 @@ enabled=true timeout 5s bash "${work}/service" || rc=$?
 [[ "${rc}" == 143 && -f "${work}/stale-cleared" ]]
 [[ "$(cat "${work}/filemode")" == 600 ]]
 diff -u <(printf 'show wg7 transfer\nshow wg7 latest-handshakes\nshow wg7 transfer\n') "${work}/wg.log"
-jq -e '(.collected_at | type == "number") and
+jq -e --argjson expected "${expected_time}" '
+    (.collected_at >= $expected and .collected_at <= ($expected + 5)) and
     (.peers == {
         phone: {latest_handshake: 1700000000, transfer_rx: 2048, transfer_tx: 1536},
         constructor: {latest_handshake: 0, transfer_rx: 0, transfer_tx: 0}
